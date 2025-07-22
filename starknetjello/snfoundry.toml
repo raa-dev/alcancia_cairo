@@ -1,0 +1,18 @@
+# Visit https://foundry-rs.github.io/starknet-foundry/appendix/snfoundry-toml.html
+# and https://foundry-rs.github.io/starknet-foundry/projects/configuration.html for more information
+
+[sncast.sepolia]
+url = "https://starknet-sepolia.public.blastapi.io/rpc/v0_8"
+accounts-file = "/home/lax/.starknet_accounts/starknet_open_zeppelin_accounts.json"
+account = "stark"
+wait-params = { timeout = 300, retry-interval = 10 }
+block-explorer = "StarkScan"
+show-explorer-links = true
+
+[sncast.mainnet]
+url = "https://starknet-mainnet.public.blastapi.io/rpc/v0_8"
+accounts-file = "/home/lax/.starknet_accounts/starknet_open_zeppelin_accounts.json"
+account = "stark"
+wait-params = { timeout = 300, retry-interval = 10 }
+block-explorer = "StarkScan"
+show-explorer-links = true
