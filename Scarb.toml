@@ -7,6 +7,7 @@ edition = "2024_07"
 
 [dependencies]
 starknet = "2.11.4"
+openzeppelin = "2.0.0"
 
 [dev-dependencies]
 snforge_std = "0.46.0"
@@ -25,6 +26,16 @@ sierra = true
 [[target.starknet-contract]]
 name = "individualsavings"
 path = "src/lib.cairo"
+sierra = true
+
+[[target.starknet-contract]]
+name = "mockerc20"
+path = "src/mock_erc20.cairo"
+sierra = true
+
+[[target.starknet-contract]]
+name = "mocklendingpool"
+path = "src/mock_lending_pool.cairo"
 sierra = true
 
 [scripts]

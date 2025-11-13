@@ -1,4 +1,6 @@
 .env
 .cursor
-.snfroundry_cache
+.snfoundry_cache/
 .starknet_accounts
+target/
+deployment_output.log
