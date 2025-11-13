@@ -1,8 +1,8 @@
 use starknet::ContractAddress;
-use snforge_std::{declare, ContractClassTrait, DeclareResultTrait};
-use starknetjello::IYieldManagerDispatcher;
-use starknetjello::IYieldManagerDispatcherTrait;
-use starknet::contract_address_const;
+use snforge_std::{declare, ContractClassTrait, DeclareResultTrait, start_cheat_caller_address, stop_cheat_caller_address};
+use alcancia::IYieldManagerDispatcher;
+use alcancia::IYieldManagerDispatcherTrait;
+use core::array::ArrayTrait;
 
 fn deploy_yieldmanager(admin: ContractAddress) -> ContractAddress {
     let contract = declare("yieldmanager").unwrap().contract_class();
@@ -14,53 +14,169 @@ fn deploy_yieldmanager(admin: ContractAddress) -> ContractAddress {
 
 #[test]
 fn test_deposit_and_yield() {
-    let admin = contract_address_const::<0>();
+    let admin: ContractAddress = 1.try_into().unwrap();
     let contract_address = deploy_yieldmanager(admin);
     let dispatcher = IYieldManagerDispatcher { contract_address };
+    
     let user: felt252 = 1234;
-    let caller = contract_address_const::<0>(); // Simula GroupSavings autorizado
-    dispatcher.set_admin_for_test(admin);
-    // Autorizar caller
-    dispatcher.set_authorized_caller(caller, true);
-    // Depositar
-    dispatcher.deposit(caller, user, 1000);
-    // Verificar balance
+    let authorized_caller: ContractAddress = 100.try_into().unwrap();
+    
+    // Authorize caller as admin
+    start_cheat_caller_address(contract_address, admin);
+    dispatcher.set_authorized_caller(authorized_caller, true);
+    stop_cheat_caller_address(contract_address);
+    
+    // Deposit as authorized caller
+    start_cheat_caller_address(contract_address, authorized_caller);
+    dispatcher.deposit(authorized_caller, user, 1000);
+    stop_cheat_caller_address(contract_address);
+    
+    // Verify balance
     let bal = dispatcher.get_user_balance(user);
     assert(bal == 1000, 0);
-    // Distribuir yield (5%)
+    
+    // Distribute yield (5%)
     dispatcher.distribute_yield();
-    // Verificar yield
+    
+    // Verify yield
     let y = dispatcher.get_user_yield(user);
-    assert(y == 50, 0); // 5% de 1000
+    assert(y == 50, 0); // 5% of 1000
 }
 
 #[test]
 fn test_penalty_and_bonus() {
-    let admin = contract_address_const::<0>();
+    let admin: ContractAddress = 2.try_into().unwrap();
     let contract_address = deploy_yieldmanager(admin);
     let dispatcher = IYieldManagerDispatcher { contract_address };
+    
     let user: felt252 = 2222;
-    let caller = contract_address_const::<0>();
-    dispatcher.set_admin_for_test(admin);
-    dispatcher.deposit(caller, user, 2000);
-    // Asignar penalización y bono
+    let authorized_caller: ContractAddress = 200.try_into().unwrap();
+    
+    // Authorize caller
+    start_cheat_caller_address(contract_address, admin);
+    dispatcher.set_authorized_caller(authorized_caller, true);
+    stop_cheat_caller_address(contract_address);
+    
+    // Deposit
+    start_cheat_caller_address(contract_address, authorized_caller);
+    dispatcher.deposit(authorized_caller, user, 2000);
+    stop_cheat_caller_address(contract_address);
+    
+    // Set penalty and bonus as admin
+    start_cheat_caller_address(contract_address, admin);
     dispatcher.set_penalty(user, 50);
     dispatcher.set_bonus(user, 30);
+    stop_cheat_caller_address(contract_address);
+    
+    // Distribute yield
     dispatcher.distribute_yield();
-    // Verificar yield
+    
+    // Verify yield: 5% of 2000 = 100, +30 bonus -50 penalty = 80
     let y = dispatcher.get_user_yield(user);
-    // 5% de 2000 = 100, +30 bono -50 penalización = 80
     assert(y == 80, 0);
 }
 
 #[test]
 fn test_update_strategy() {
-    let admin = contract_address_const::<0>();
+    let admin: ContractAddress = 3.try_into().unwrap();
     let contract_address = deploy_yieldmanager(admin);
     let dispatcher = IYieldManagerDispatcher { contract_address };
-    let new_strategy = contract_address_const::<99>();
-    dispatcher.set_admin_for_test(admin);
+    
+    let new_strategy: ContractAddress = 99.try_into().unwrap();
+    
+    // Update strategy as admin
+    start_cheat_caller_address(contract_address, admin);
     dispatcher.update_strategy(new_strategy);
+    stop_cheat_caller_address(contract_address);
+    
     let strategy = dispatcher.get_strategy();
     assert(strategy == new_strategy, 0);
-} 
+}
+
+#[test]
+#[should_panic]
+fn test_update_strategy_unauthorized_should_fail() {
+    let admin: ContractAddress = 4.try_into().unwrap();
+    let contract_address = deploy_yieldmanager(admin);
+    let dispatcher = IYieldManagerDispatcher { contract_address };
+    
+    let new_strategy: ContractAddress = 99.try_into().unwrap();
+    let unauthorized: ContractAddress = 999.try_into().unwrap();
+    
+    // Try to update strategy as unauthorized user
+    start_cheat_caller_address(contract_address, unauthorized);
+    // This should fail - only admin can update strategy
+    dispatcher.update_strategy(new_strategy);
+    stop_cheat_caller_address(contract_address);
+}
+
+#[test]
+#[should_panic]
+fn test_deposit_unauthorized_should_fail() {
+    let admin: ContractAddress = 5.try_into().unwrap();
+    let contract_address = deploy_yieldmanager(admin);
+    let dispatcher = IYieldManagerDispatcher { contract_address };
+    
+    let user: felt252 = 3333;
+    let unauthorized_caller: ContractAddress = 500.try_into().unwrap();
+    
+    // Try to deposit as unauthorized caller
+    start_cheat_caller_address(contract_address, unauthorized_caller);
+    // This should fail - caller is not authorized
+    dispatcher.deposit(unauthorized_caller, user, 1000);
+    stop_cheat_caller_address(contract_address);
+}
+
+#[test]
+#[should_panic]
+fn test_deposit_zero_amount_should_fail() {
+    let admin: ContractAddress = 6.try_into().unwrap();
+    let contract_address = deploy_yieldmanager(admin);
+    let dispatcher = IYieldManagerDispatcher { contract_address };
+    
+    let user: felt252 = 4444;
+    let authorized_caller: ContractAddress = 600.try_into().unwrap();
+    
+    // Authorize caller
+    start_cheat_caller_address(contract_address, admin);
+    dispatcher.set_authorized_caller(authorized_caller, true);
+    stop_cheat_caller_address(contract_address);
+    
+    // Try to deposit zero amount
+    start_cheat_caller_address(contract_address, authorized_caller);
+    // This should fail - amount must be greater than 0
+    dispatcher.deposit(authorized_caller, user, 0);
+    stop_cheat_caller_address(contract_address);
+}
+
+#[test]
+fn test_yield_with_large_penalty() {
+    let admin: ContractAddress = 7.try_into().unwrap();
+    let contract_address = deploy_yieldmanager(admin);
+    let dispatcher = IYieldManagerDispatcher { contract_address };
+    
+    let user: felt252 = 5555;
+    let authorized_caller: ContractAddress = 700.try_into().unwrap();
+    
+    // Authorize caller
+    start_cheat_caller_address(contract_address, admin);
+    dispatcher.set_authorized_caller(authorized_caller, true);
+    stop_cheat_caller_address(contract_address);
+    
+    // Deposit
+    start_cheat_caller_address(contract_address, authorized_caller);
+    dispatcher.deposit(authorized_caller, user, 1000);
+    stop_cheat_caller_address(contract_address);
+    
+    // Set penalty larger than yield + bonus
+    start_cheat_caller_address(contract_address, admin);
+    dispatcher.set_penalty(user, 200); // Larger than 5% yield (50)
+    stop_cheat_caller_address(contract_address);
+    
+    // Distribute yield - should handle underflow gracefully
+    dispatcher.distribute_yield();
+    
+    // Yield should be 0 (penalty exceeds yield)
+    let y = dispatcher.get_user_yield(user);
+    assert(y == 0, 0);
+}

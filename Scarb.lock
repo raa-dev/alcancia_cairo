@@ -2,23 +2,23 @@
 version = 1
 
 [[package]]
-name = "snforge_scarb_plugin"
-version = "0.43.1"
-source = "registry+https://scarbs.xyz/"
-checksum = "sha256:178e1e2081003ae5e40b5a8574654bed15acbd31cce651d4e74fe2f009bc0122"
-
-[[package]]
-name = "snforge_std"
-version = "0.43.1"
-source = "registry+https://scarbs.xyz/"
-checksum = "sha256:17bc65b0abfb9b174784835df173f9c81c9ad39523dba760f30589ef53cf8bb5"
-dependencies = [
- "snforge_scarb_plugin",
-]
-
-[[package]]
-name = "starknetjello"
+name = "alcancia"
 version = "0.1.0"
 dependencies = [
  "snforge_std",
+]
+
+[[package]]
+name = "snforge_scarb_plugin"
+version = "0.46.0"
+source = "registry+https://scarbs.xyz/"
+checksum = "sha256:6ffa10fe0ff525678138afd584fc2012e7b248f9c8e7b44aeae033cef3ee7826"
+
+[[package]]
+name = "snforge_std"
+version = "0.46.0"
+source = "registry+https://scarbs.xyz/"
+checksum = "sha256:a4d4b4d3e8506a3907d1eabacb058c390aa13a70132f475cba5e3dcd7a60d0bb"
+dependencies = [
+ "snforge_scarb_plugin",
 ]
