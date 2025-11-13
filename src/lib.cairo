@@ -2,36 +2,57 @@
 // Contrato GroupSavings en Cairo 1.x compatible y con buenas prácticas
 
 use core::integer::u32;
+use core::integer::u256;
+use starknet::ContractAddress;
+
+// ERC20 Interface
+#[starknet::interface]
+pub trait IERC20<TContractState> {
+    fn transfer(ref self: TContractState, recipient: ContractAddress, amount: u256) -> bool;
+    fn transfer_from(
+        ref self: TContractState, sender: ContractAddress, recipient: ContractAddress, amount: u256
+    ) -> bool;
+    fn approve(ref self: TContractState, spender: ContractAddress, amount: u256) -> bool;
+    fn allowance(self: @TContractState, owner: ContractAddress, spender: ContractAddress) -> u256;
+    fn balance_of(self: @TContractState, account: ContractAddress) -> u256;
+}
 
 #[starknet::interface]
 pub trait IGroupSavings<TContractState> {
     fn register_group(ref self: TContractState, group_id: felt252, name: felt252, members: Array<felt252>);
-    fn save(ref self: TContractState, group_id: felt252, member: felt252, amount: felt252);
-    fn get_group_total(self: @TContractState, group_id: felt252) -> felt252;
-    fn get_member_savings(self: @TContractState, group_id: felt252, member: felt252) -> felt252;
+    fn save(ref self: TContractState, group_id: felt252, member: felt252, amount: u256);
+    fn withdraw(ref self: TContractState, group_id: felt252, member: felt252, amount: u256);
+    fn get_group_total(self: @TContractState, group_id: felt252) -> u256;
+    fn get_member_savings(self: @TContractState, group_id: felt252, member: felt252) -> u256;
     fn get_group_member(self: @TContractState, group_id: felt252, index: u32) -> felt252;
     fn get_group_size(self: @TContractState, group_id: felt252) -> u32;
     fn is_group_member(self: @TContractState, group_id: felt252, member: felt252) -> bool;
+    fn set_token_address(ref self: TContractState, token_address: ContractAddress);
+    fn get_token_address(self: @TContractState) -> ContractAddress;
 }
 
 #[starknet::contract]
 mod groupsavings {
-    use super::IGroupSavings;
+    use super::{IGroupSavings, IERC20Dispatcher, IERC20DispatcherTrait};
     use starknet::ContractAddress;
     use starknet::storage::Map;
     use starknet::storage::{StorageMapWriteAccess, StorageMapReadAccess};
     use core::integer::u32;
+    use core::integer::u256;
     use core::array::ArrayTrait;
+    use core::traits::TryInto;
 
     #[storage]
     struct Storage {
         group_names: Map<felt252, felt252>,
         group_members: Map<(felt252, u32), felt252>,
         group_sizes: Map<felt252, u32>,
-        member_savings: Map<(felt252, felt252), felt252>,
-        group_totals: Map<felt252, felt252>,
+        member_savings: Map<(felt252, felt252), u256>,
+        group_totals: Map<felt252, u256>,
         group_creators: Map<felt252, ContractAddress>,
         group_registered: Map<felt252, bool>,
+        token_address: Map<(), ContractAddress>,
+        admin: Map<(), ContractAddress>,
     }
 
     #[event]
@@ -39,6 +60,8 @@ mod groupsavings {
     enum Event {
         GroupRegistered: GroupRegistered,
         SavingsDeposited: SavingsDeposited,
+        Withdrawal: Withdrawal,
+        TokenAddressSet: TokenAddressSet,
     }
 
     #[derive(Drop, starknet::Event)]
@@ -53,9 +76,28 @@ mod groupsavings {
     struct SavingsDeposited {
         group_id: felt252,
         member: felt252,
-        amount: felt252,
-        new_total: felt252,
-        member_total: felt252,
+        amount: u256,
+        new_total: u256,
+        member_total: u256,
+    }
+
+    #[derive(Drop, starknet::Event)]
+    struct Withdrawal {
+        group_id: felt252,
+        member: felt252,
+        amount: u256,
+        new_total: u256,
+        member_total: u256,
+    }
+
+    #[derive(Drop, starknet::Event)]
+    struct TokenAddressSet {
+        token_address: ContractAddress,
+    }
+
+    #[constructor]
+    fn constructor(ref self: ContractState, admin: ContractAddress) {
+        self.admin.write((), admin);
     }
 
     #[abi(embed_v0)]
@@ -108,7 +150,7 @@ mod groupsavings {
             });
         }
 
-        fn save(ref self: ContractState, group_id: felt252, member: felt252, amount: felt252) {
+        fn save(ref self: ContractState, group_id: felt252, member: felt252, amount: u256) {
             // Validate inputs
             assert(amount != 0, 7); // Amount must be greater than 0
             assert(group_id != 0, 8); // Invalid group_id
@@ -125,6 +167,14 @@ mod groupsavings {
             // Verify member is part of the group
             let is_member = self.is_group_member(group_id, member);
             assert(is_member, 12); // Member is not part of this group
+            
+            // Transfer tokens from member to contract
+            let token_address = self.token_address.read(());
+            assert(token_address.into() != 0, 14); // Token address not set
+            let token = IERC20Dispatcher { contract_address: token_address };
+            let sender = starknet::get_caller_address();
+            let self_address = starknet::get_contract_address();
+            token.transfer_from(sender, self_address, amount);
             
             // Perform the save operation
             let prev = self.member_savings.read((group_id, member));
@@ -145,11 +195,58 @@ mod groupsavings {
             });
         }
 
-        fn get_group_total(self: @ContractState, group_id: felt252) -> felt252 {
+        fn withdraw(ref self: ContractState, group_id: felt252, member: felt252, amount: u256) {
+            // Validate inputs
+            assert(amount != 0, 15); // Amount must be greater than 0
+            assert(group_id != 0, 16); // Invalid group_id
+            assert(member != 0, 17); // Invalid member
+            
+            // Verify group exists
+            let exists = self.group_registered.read(group_id);
+            assert(exists, 18); // Group does not exist
+            
+            // Verify caller is the member
+            let caller = starknet::get_caller_address();
+            assert(caller.into() == member, 19); // Only the member can withdraw
+            
+            // Verify member is part of the group
+            let is_member = self.is_group_member(group_id, member);
+            assert(is_member, 20); // Member is not part of this group
+            
+            // Check sufficient balance
+            let current_savings = self.member_savings.read((group_id, member));
+            assert(current_savings >= amount, 21); // Insufficient savings
+            
+            // Transfer tokens from contract to member
+            let token_address = self.token_address.read(());
+            assert(token_address.into() != 0, 22); // Token address not set
+            let token = IERC20Dispatcher { contract_address: token_address };
+            let member_address: ContractAddress = member.try_into().unwrap();
+            token.transfer(member_address, amount);
+            
+            // Update balances
+            let new_member_total = current_savings - amount;
+            self.member_savings.write((group_id, member), new_member_total);
+            
+            let prev_total = self.group_totals.read(group_id);
+            let new_total = prev_total - amount;
+            self.group_totals.write(group_id, new_total);
+            
+            // Emit event
+            self.emit(Withdrawal {
+                group_id,
+                member,
+                amount,
+                new_total,
+                member_total: new_member_total,
+            });
+        }
+
+        fn get_group_total(self: @ContractState, group_id: felt252) -> u256 {
             self.group_totals.read(group_id)
         }
 
-        fn get_member_savings(self: @ContractState, group_id: felt252, member: felt252) -> felt252 {
+        fn get_member_savings(self: @ContractState, group_id: felt252, member: felt252) -> u256 {
             self.member_savings.read((group_id, member))
         }
 
@@ -175,17 +272,28 @@ mod groupsavings {
             };
             false
         }
+
+        fn set_token_address(ref self: ContractState, token_address: ContractAddress) {
+            let caller = starknet::get_caller_address();
+            let admin = self.admin.read(());
+            assert(caller == admin, 23); // Only admin can set token address
+            assert(token_address.into() != 0, 24); // Invalid token address
+            self.token_address.write((), token_address);
+            self.emit(TokenAddressSet { token_address });
+        }
+
+        fn get_token_address(self: @ContractState) -> ContractAddress {
+            self.token_address.read(())
+        }
     }
 }
 
 // ===================== YieldManager =====================
 
-use starknet::ContractAddress;
-use core::integer::u256;
-
 #[starknet::interface]
 pub trait IYieldManager<TContractState> {
     fn deposit(ref self: TContractState, from: ContractAddress, user: felt252, amount: u256);
+    fn withdraw(ref self: TContractState, user: felt252, amount: u256);
     fn update_strategy(ref self: TContractState, new_strategy: ContractAddress);
     fn distribute_yield(ref self: TContractState);
     fn get_user_balance(self: @TContractState, user: felt252) -> u256;
@@ -194,15 +302,18 @@ pub trait IYieldManager<TContractState> {
     fn set_authorized_caller(ref self: TContractState, contract: ContractAddress, is_auth: bool);
     fn set_penalty(ref self: TContractState, user: felt252, amount: u256);
     fn set_bonus(ref self: TContractState, user: felt252, amount: u256);
+    fn set_token_address(ref self: TContractState, token_address: ContractAddress);
+    fn get_token_address(self: @TContractState) -> ContractAddress;
 }
 
 #[starknet::contract]
 mod yieldmanager {
-    use super::IYieldManager;
+    use super::{IYieldManager, IERC20Dispatcher, IERC20DispatcherTrait};
     use starknet::ContractAddress;
     use starknet::storage::Map;
     use starknet::storage::{StorageMapWriteAccess, StorageMapReadAccess};
     use core::integer::u256;
+    use core::traits::TryInto;
 
     #[storage]
     struct Storage {
@@ -215,17 +326,20 @@ mod yieldmanager {
         bonuses: Map<felt252, u256>,
         users: Map<u32, felt252>, // Para iterar usuarios
         user_count: Map<(), u32>,
+        token_address: Map<(), ContractAddress>,
     }
 
     #[event]
     #[derive(Drop, starknet::Event)]
     enum Event {
         Deposit: Deposit,
+        Withdrawal: Withdrawal,
         YieldDistributed: YieldDistributed,
         StrategyUpdated: StrategyUpdated,
         AuthorizedCallerSet: AuthorizedCallerSet,
         PenaltySet: PenaltySet,
         BonusSet: BonusSet,
+        TokenAddressSet: TokenAddressSet,
     }
 
     #[derive(Drop, starknet::Event)]
@@ -264,6 +378,18 @@ mod yieldmanager {
     struct BonusSet {
         user: felt252,
         amount: u256,
+    }
+
+    #[derive(Drop, starknet::Event)]
+    struct Withdrawal {
+        user: felt252,
+        amount: u256,
+        new_balance: u256,
+    }
+
+    #[derive(Drop, starknet::Event)]
+    struct TokenAddressSet {
+        token_address: ContractAddress,
     }
 
     #[constructor]
@@ -319,6 +445,13 @@ mod yieldmanager {
             let is_auth = self.authorized_callers.read(from);
             assert(is_auth, 1); // Caller is not authorized
             
+            // Transfer tokens from authorized caller to contract
+            let token_address = self.token_address.read(());
+            assert(token_address.into() != 0, 27); // Token address not set
+            let token = IERC20Dispatcher { contract_address: token_address };
+            let self_address = starknet::get_contract_address();
+            token.transfer_from(from, self_address, amount);
+            
             let prev = self.balances.read(user);
             let new_balance = prev + amount;
             self.balances.write(user, new_balance);
@@ -342,6 +475,34 @@ mod yieldmanager {
             // Emit event
             self.emit(Deposit {
                 from,
+                user,
+                amount,
+                new_balance,
+            });
+        }
+
+        fn withdraw(ref self: ContractState, user: felt252, amount: u256) {
+            // Validate inputs
+            assert(amount != 0, 28); // Amount must be greater than 0
+            assert(user != 0, 29); // Invalid user
+            
+            // Check sufficient balance
+            let current_balance = self.balances.read(user);
+            assert(current_balance >= amount, 30); // Insufficient balance
+            
+            // Transfer tokens from contract to user
+            let token_address = self.token_address.read(());
+            assert(token_address.into() != 0, 31); // Token address not set
+            let token = IERC20Dispatcher { contract_address: token_address };
+            let user_address: ContractAddress = user.try_into().unwrap();
+            token.transfer(user_address, amount);
+            
+            // Update balance
+            let new_balance = current_balance - amount;
+            self.balances.write(user, new_balance);
+            
+            // Emit event
+            self.emit(Withdrawal {
                 user,
                 amount,
                 new_balance,
@@ -401,6 +562,19 @@ mod yieldmanager {
         fn get_user_yield(self: @ContractState, user: felt252) -> u256 {
             self.yields.read(user)
         }
+
+        fn set_token_address(ref self: ContractState, token_address: ContractAddress) {
+            let caller = starknet::get_caller_address();
+            let admin = self.admin.read(());
+            assert(caller == admin, 32); // Only admin can set token address
+            assert(token_address.into() != 0, 33); // Invalid token address
+            self.token_address.write((), token_address);
+            self.emit(TokenAddressSet { token_address });
+        }
+
+        fn get_token_address(self: @ContractState) -> ContractAddress {
+            self.token_address.read(())
+        }
     }
     
     // Internal implementation for testing only
@@ -447,11 +621,13 @@ pub trait IIndividualSavings<TContractState> {
     // Funciones administrativas
     fn set_owner(ref self: TContractState, new_owner: ContractAddress);
     fn get_owner(self: @TContractState) -> ContractAddress;
+    fn set_token_address(ref self: TContractState, token_address: ContractAddress);
+    fn get_token_address(self: @TContractState) -> ContractAddress;
 }
 
 #[starknet::contract]
 mod individualsavings {
-    use super::IIndividualSavings;
+    use super::{IIndividualSavings, IERC20Dispatcher, IERC20DispatcherTrait};
     use starknet::ContractAddress;
     use starknet::storage::Map;
     use starknet::storage::{StorageMapWriteAccess, StorageMapReadAccess};
@@ -481,6 +657,9 @@ mod individualsavings {
         
         // Owner del contrato
         owner: Map<(), ContractAddress>,
+        
+        // Token address
+        token_address: Map<(), ContractAddress>,
     }
 
     #[event]
@@ -493,6 +672,7 @@ mod individualsavings {
         PenaltyApplied: PenaltyApplied,
         BonusApplied: BonusApplied,
         ProgressUpdated: ProgressUpdated,
+        TokenAddressSet: TokenAddressSet,
     }
 
     #[derive(Drop, starknet::Event)]
@@ -545,6 +725,11 @@ mod individualsavings {
         current_amount: u256,
         target_amount: u256,
         progress_percentage: u256,
+    }
+
+    #[derive(Drop, starknet::Event)]
+    struct TokenAddressSet {
+        token_address: ContractAddress,
     }
 
     #[constructor]
@@ -618,6 +803,13 @@ mod individualsavings {
             // Verificar que el monto es válido
             assert(amount > 0, 8); // Amount must be greater than 0
             
+            // Transfer tokens from user to contract
+            let token_address = self.token_address.read(());
+            assert(token_address.into() != 0, 25); // Token address not set
+            let token = IERC20Dispatcher { contract_address: token_address };
+            let self_address = starknet::get_contract_address();
+            token.transfer_from(caller, self_address, amount);
+            
             // Realizar el depósito
             let current_amount = self.goal_current_amounts.read(goal_id);
             let new_amount = current_amount + amount;
@@ -663,6 +855,12 @@ mod individualsavings {
             // Verificar que hay suficientes fondos
             let current_amount = self.goal_current_amounts.read(goal_id);
             assert(current_amount >= amount, 13); // Insufficient funds
+            
+            // Transfer tokens from contract to user
+            let token_address = self.token_address.read(());
+            assert(token_address.into() != 0, 26); // Token address not set
+            let token = IERC20Dispatcher { contract_address: token_address };
+            token.transfer(caller, amount);
             
             // Realizar el retiro
             let new_amount = current_amount - amount;
@@ -813,6 +1011,19 @@ mod individualsavings {
         fn get_owner(self: @ContractState) -> ContractAddress {
             self.owner.read(())
         }
+
+        fn set_token_address(ref self: ContractState, token_address: ContractAddress) {
+            let caller = starknet::get_caller_address();
+            let owner = self.owner.read(());
+            assert(caller == owner, 27); // Only owner can set token address
+            assert(token_address.into() != 0, 28); // Invalid token address
+            self.token_address.write((), token_address);
+            self.emit(TokenAddressSet { token_address });
+        }
+
+        fn get_token_address(self: @ContractState) -> ContractAddress {
+            self.token_address.read(())
+        }
     }
 
     #[generate_trait]
@@ -833,4 +1044,6 @@ mod individualsavings {
             });
         }
     }
-} 
+}
+
+pub mod mock_erc20; 
