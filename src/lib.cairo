@@ -459,7 +459,7 @@ mod groupsavings {
 
 // ===================== YieldManager =====================
 
-// Define ERC4626 interface based on OpenZeppelin standard
+// Custom ERC4626 interface (ERC4626 standard compatible, but custom implementation)
 #[starknet::interface]
 pub trait IERC4626<TContractState> {
     fn asset(self: @TContractState) -> ContractAddress;
@@ -725,6 +725,7 @@ mod yieldmanager {
                 token.approve(lending_pool_address, amount);
                 
                 // Deposit into lending pool using ERC4626 standard
+                // Use self_address as receiver (where shares are credited to YieldManager)
                 let lending_pool = IERC4626Dispatcher { contract_address: lending_pool_address };
                 let _shares = lending_pool.deposit(amount, self_address);
                 

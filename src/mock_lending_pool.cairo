@@ -3,8 +3,7 @@
 
 use core::integer::u256;
 
-// Re-export IERC4626 interface from lib.cairo for consistency
-use alcancia::IERC4626;
+// Import IERC4626 interface from lib.cairo (custom ERC4626 interface)
 use alcancia::IERC20Dispatcher;
 use alcancia::IERC20DispatcherTrait;
 
@@ -16,7 +15,8 @@ pub trait IMockLendingPool<TContractState> {
 
 #[starknet::contract]
 pub mod mocklendingpool {
-    use super::{IERC4626, IERC20Dispatcher, IERC20DispatcherTrait, IMockLendingPool};
+    use alcancia::IERC4626;
+    use super::{IERC20Dispatcher, IERC20DispatcherTrait, IMockLendingPool};
     use starknet::ContractAddress;
     use starknet::storage::Map;
     use starknet::storage::{StorageMapWriteAccess, StorageMapReadAccess};
@@ -25,7 +25,7 @@ pub mod mocklendingpool {
     #[storage]
     struct Storage {
         asset_address: Map<(), ContractAddress>,
-        total_assets: Map<(), u256>,
+        base_assets: Map<(), u256>, // Base assets deposited (renamed to avoid conflict with total_assets function)
         total_supply: Map<(), u256>, // Total shares
         shares: Map<ContractAddress, u256>, // User shares
         yield_rate: Map<(), u256>, // Annual yield rate in basis points (e.g., 500 = 5%)
@@ -35,11 +35,11 @@ pub mod mocklendingpool {
     fn constructor(
         ref self: ContractState,
         asset_address: ContractAddress,
-        _name: ByteArray,
-        _symbol: ByteArray
+        _name: felt252,
+        _symbol: felt252
     ) {
         self.asset_address.write((), asset_address);
-        self.total_assets.write((), 0);
+        self.base_assets.write((), 0);
         self.total_supply.write((), 0);
         self.yield_rate.write((), 500); // Default 5% annual yield
     }
@@ -52,7 +52,7 @@ pub mod mocklendingpool {
 
         fn total_assets(self: @ContractState) -> u256 {
             // Simulate yield accumulation
-            let base_assets = self.total_assets.read(());
+            let base_assets = self.base_assets.read(());
             let yield_rate = self.yield_rate.read(());
             
             // Simple yield calculation: add small amount per call (simulating time passage)
@@ -105,15 +105,16 @@ pub mod mocklendingpool {
             let self_address = starknet::get_contract_address();
             let caller = starknet::get_caller_address();
             
-            // Transfer tokens from caller
+            // Transfer tokens from caller to vault
+            // The caller (YieldManager) has already approved this contract
             token.transfer_from(caller, self_address, assets);
             
             // Calculate shares using ERC4626 formula
             let shares = self.convert_to_shares(assets);
             
             // Update state
-            let total_assets = self.total_assets.read(());
-            self.total_assets.write((), total_assets + assets);
+            let base_assets = self.base_assets.read(());
+            self.base_assets.write((), base_assets + assets);
             
             let user_shares = self.shares.read(receiver);
             self.shares.write(receiver, user_shares + shares);
@@ -172,10 +173,10 @@ pub mod mocklendingpool {
             assert(owner_shares >= shares, 1); // Insufficient shares
             
             // Update state
-            let total_assets = self.total_assets.read(());
-            assert(total_assets >= assets, 2); // Insufficient assets in pool
+            let base_assets = self.base_assets.read(());
+            assert(base_assets >= assets, 2); // Insufficient assets in pool
             
-            self.total_assets.write((), total_assets - assets);
+            self.base_assets.write((), base_assets - assets);
             self.shares.write(owner, owner_shares - shares);
             
             let total_supply = self.total_supply.read(());

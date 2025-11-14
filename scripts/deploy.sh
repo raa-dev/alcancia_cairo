@@ -62,13 +62,17 @@ echo -e "${GREEN}✓ Contracts built successfully${NC}"
 # Get the deployer address (public key)
 DEPLOYER_ADDRESS=$ARGENT_ADDRESS
 
+# Set max fee (2.5 ETH in wei) to ensure resource bounds fit within account balance
+# Account has ~3.3 ETH, so 2.5 ETH leaves buffer for multiple transactions
+MAX_FEE="2500000000000000000"
+
 # Deploy contracts
 echo -e "\n${YELLOW}=== Deploying Contracts ===${NC}\n"
 
 # 1. Deploy GroupSavings
 echo -e "${YELLOW}1. Deploying GroupSavings...${NC}"
 echo -e "${YELLOW}   Declaring contract...${NC}"
-DECLARE_OUTPUT=$(sncast --profile mainnet declare --contract-name groupsavings 2>&1)
+DECLARE_OUTPUT=$(sncast --profile mainnet declare --contract-name groupsavings --max-fee $MAX_FEE 2>&1)
 echo "$DECLARE_OUTPUT"
 
 # Extract class hash - check for success or "already declared"
@@ -105,7 +109,8 @@ echo -e "${GREEN}  Class Hash: $GROUP_SAVINGS_CLASS_HASH${NC}"
 echo -e "${YELLOW}   Deploying contract...${NC}"
 DEPLOY_OUTPUT=$(sncast --profile mainnet deploy \
     --class-hash $GROUP_SAVINGS_CLASS_HASH \
-    --constructor-calldata $DEPLOYER_ADDRESS 2>&1)
+    --constructor-calldata $DEPLOYER_ADDRESS \
+    --max-fee $MAX_FEE 2>&1)
 echo "$DEPLOY_OUTPUT"
 GROUP_SAVINGS_ADDRESS=$(echo "$DEPLOY_OUTPUT" | grep -i "contract address" | sed -E 's/.*[Cc]ontract[[:space:]]+[Aa]ddress[[:space:]]*:[[:space:]]*(0x[0-9a-fA-F]+).*/\1/' | head -1)
 
@@ -120,7 +125,7 @@ echo -e "${GREEN}✓ GroupSavings deployed at: $GROUP_SAVINGS_ADDRESS${NC}\n"
 # 2. Deploy YieldManager
 echo -e "${YELLOW}2. Deploying YieldManager...${NC}"
 echo -e "${YELLOW}   Declaring contract...${NC}"
-DECLARE_OUTPUT=$(sncast --profile mainnet declare --contract-name yieldmanager 2>&1)
+DECLARE_OUTPUT=$(sncast --profile mainnet declare --contract-name yieldmanager --max-fee $MAX_FEE 2>&1)
 echo "$DECLARE_OUTPUT"
 
 # Extract class hash - check for success or "already declared"
@@ -157,7 +162,8 @@ echo -e "${GREEN}  Class Hash: $YIELD_MANAGER_CLASS_HASH${NC}"
 echo -e "${YELLOW}   Deploying contract...${NC}"
 DEPLOY_OUTPUT=$(sncast --profile mainnet deploy \
     --class-hash $YIELD_MANAGER_CLASS_HASH \
-    --constructor-calldata $DEPLOYER_ADDRESS 2>&1)
+    --constructor-calldata $DEPLOYER_ADDRESS \
+    --max-fee $MAX_FEE 2>&1)
 echo "$DEPLOY_OUTPUT"
 YIELD_MANAGER_ADDRESS=$(echo "$DEPLOY_OUTPUT" | grep -i "contract address" | sed -E 's/.*[Cc]ontract[[:space:]]+[Aa]ddress[[:space:]]*:[[:space:]]*(0x[0-9a-fA-F]+).*/\1/' | head -1)
 
@@ -172,7 +178,7 @@ echo -e "${GREEN}✓ YieldManager deployed at: $YIELD_MANAGER_ADDRESS${NC}\n"
 # 3. Deploy IndividualSavings
 echo -e "${YELLOW}3. Deploying IndividualSavings...${NC}"
 echo -e "${YELLOW}   Declaring contract...${NC}"
-DECLARE_OUTPUT=$(sncast --profile mainnet declare --contract-name individualsavings 2>&1)
+DECLARE_OUTPUT=$(sncast --profile mainnet declare --contract-name individualsavings --max-fee $MAX_FEE 2>&1)
 echo "$DECLARE_OUTPUT"
 
 # Extract class hash - check for success or "already declared"
@@ -209,7 +215,8 @@ echo -e "${GREEN}  Class Hash: $INDIVIDUAL_SAVINGS_CLASS_HASH${NC}"
 echo -e "${YELLOW}   Deploying contract...${NC}"
 DEPLOY_OUTPUT=$(sncast --profile mainnet deploy \
     --class-hash $INDIVIDUAL_SAVINGS_CLASS_HASH \
-    --constructor-calldata $DEPLOYER_ADDRESS 2>&1)
+    --constructor-calldata $DEPLOYER_ADDRESS \
+    --max-fee $MAX_FEE 2>&1)
 echo "$DEPLOY_OUTPUT"
 INDIVIDUAL_SAVINGS_ADDRESS=$(echo "$DEPLOY_OUTPUT" | grep -i "contract address" | sed -E 's/.*[Cc]ontract[[:space:]]+[Aa]ddress[[:space:]]*:[[:space:]]*(0x[0-9a-fA-F]+).*/\1/' | head -1)
 
