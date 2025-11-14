@@ -1,0 +1,16 @@
+# Alcancia Contracts - Mainnet
+# Deployed on: Fri Nov 14 17:23:47 -03 2025
+
+GroupSavings:
+  Address: 0x03bb1463d5398c6ea89f62733c832f5df4e580f609d652f7f9f2d5778d873c2f
+  Class Hash: 0x014c004a47a85bc17ec34e4b2006d9ba4547442416aa38795cc6a3a09bd3b444
+
+YieldManager:
+  Address: 0x022c2076885bb03ba3fc5269ae8a7167f4abf18a9df5f9f93e1fdb87e40f6377
+  Class Hash: 0x06efe6d1209df79c27fc6dd9cb29953809d982a7a0f22bb0ed0214918d711ed0
+
+IndividualSavings:
+  Address: 0x03ae319a84bfd47c94daef66b61257a53cf762694ec4e44e03d36912619e64ef
+  Class Hash: 0x04603b7d51700d005bfc730cff2bdb30a1802b545e48d1ae1cc5f8698bbeca44
+
+Deployer Address: 0x06dEBd02037ECa4Aa999198E5F047f0f3bF388BE54a4DdAbEc00EaC337B892E0

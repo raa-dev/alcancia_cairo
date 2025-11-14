@@ -3,16 +3,15 @@
 
 [sncast.sepolia]
 url = "https://starknet-sepolia.public.blastapi.io/rpc/v0_8"
-accounts-file = "/home/lax/.starknet_accounts/starknet_open_zeppelin_accounts.json"
-account = "stark"
+accounts-file = ".starknet_accounts/argent_account.json"
+account = "argent_deployer"
 wait-params = { timeout = 300, retry-interval = 10 }
 block-explorer = "StarkScan"
 show-explorer-links = true
 
 [sncast.mainnet]
-url = "https://starknet-mainnet.public.blastapi.io/rpc/v0_8"
-accounts-file = "/home/lax/.starknet_accounts/starknet_open_zeppelin_accounts.json"
-account = "stark"
+url = "https://starknet-mainnet.g.alchemy.com/v2/Tl6ArGxCd5fmvrYuDrE3n"
+account = "argent_deployer"
 wait-params = { timeout = 300, retry-interval = 10 }
 block-explorer = "StarkScan"
 show-explorer-links = true
